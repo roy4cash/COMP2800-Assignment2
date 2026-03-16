@@ -1,2 +1,2 @@
 # COMP2800-Assignment2
-ASSIGNMENT 2 GAME
+This is Ayushmaan Roy's Assignment 2 for COMP 2800 submission. 
