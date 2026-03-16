@@ -215,19 +215,30 @@
     }
   }
 
-  function togglePause(force = null) {
-    if (!state.running) return;
-    const next = (force === null) ? !state.paused : !!force;
-    state.paused = next;
-    if (state.paused) {
-      pauseDialog?.showModal();
-    } else {
-      if (pauseDialog?.open) pauseDialog.close('resume');
-      // Reset lastTs so dt spike doesn’t occur
-      state.lastTs = 0;
-      requestAnimationFrame(loop);
-    }
+function togglePause(force = null) {
+  if (!state.running) return;
+
+  const next = (force === null) ? !state.paused : !!force;
+  state.paused = next;
+
+  const title = pauseDialog?.querySelector('#pauseTitle');
+  const text = pauseDialog?.querySelector('p');
+  const resumeBtn = pauseDialog?.querySelector('button[value="resume"]');
+
+  if (title) {
+    title.innerHTML = '<i class="fa-solid fa-circle-pause" aria-hidden="true"></i> Paused';
   }
+  if (text) text.textContent = 'Game is paused.';
+  if (resumeBtn) resumeBtn.style.display = '';
+
+  if (state.paused) {
+    pauseDialog?.showModal();
+  } else {
+    if (pauseDialog?.open) pauseDialog.close('resume');
+    state.lastTs = 0;
+    requestAnimationFrame(loop);
+  }
+}
 
   function resetGame() {
     state = {
@@ -586,22 +597,34 @@
   }
 
   // Game over
-  function gameOver() {
-    state.running = false;
-    // Persist score
-    try {
-      const key = 'spaceGameScores';
-      const list = JSON.parse(localStorage.getItem(key) || '[]');
-      list.push({ initials: 'YOU', score: state.score, t: Date.now() });
-      list.sort((a, b) => b.score - a.score);
-      localStorage.setItem(key, JSON.stringify(list.slice(0, 10)));
-      renderScores(list.slice(0, 10));
-    } catch {
-      // ignore
-    }
-    // Show pause dialog as "Restart"
-    if (!pauseDialog?.open) pauseDialog?.showModal();
+function gameOver() {
+  state.running = false;
+  state.paused = false;
+
+  // Persist score
+  try {
+    const key = 'spaceGameScores';
+    const list = JSON.parse(localStorage.getItem(key) || '[]');
+    list.push({ initials: 'YOU', score: state.score, t: Date.now() });
+    list.sort((a, b) => b.score - a.score);
+    localStorage.setItem(key, JSON.stringify(list.slice(0, 10)));
+    renderScores(list.slice(0, 10));
+  } catch {
+    // ignore
   }
+
+  const title = pauseDialog?.querySelector('#pauseTitle');
+  const text = pauseDialog?.querySelector('p');
+  const resumeBtn = pauseDialog?.querySelector('button[value="resume"]');
+
+  if (title) {
+    title.innerHTML = '<i class="fa-solid fa-skull" aria-hidden="true"></i> Game Over';
+  }
+  if (text) text.textContent = 'You lost all lives.';
+  if (resumeBtn) resumeBtn.style.display = 'none';
+
+  if (!pauseDialog?.open) pauseDialog?.showModal();
+}
 
   function renderScores(list) {
     const ol = $('#scores');
