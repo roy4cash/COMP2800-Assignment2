@@ -29,7 +29,7 @@
   const BASE_HEIGHT = 768;
 
   const SPRITE_PATH = 'spaceArt/png/';
-  const BG_PATH = 'spaceArt/background/'; // CHANGE THIS if your folder name is different
+  const BG_PATH = 'spaceArt/png/Background/';
 
   const settings = {
     difficulty: 'normal',
@@ -186,7 +186,7 @@
 
   pauseDialog?.addEventListener('close', () => {
     const val = pauseDialog.returnValue;
-    if (val === 'resume' && state.running && !state.gameOver) {
+    if (val === 'resume' && state.paused && state.running && !state.gameOver) {
       togglePause(false);
     } else if (val === 'restart') {
       resetGame();
@@ -230,6 +230,10 @@
     state.paused = next;
 
     if (state.paused) {
+      const heading = $('#pauseHeading');
+      const subtext = $('#pauseSubtext');
+      if (heading) heading.textContent = 'Paused';
+      if (subtext) subtext.textContent = 'Use the buttons below to resume or restart the game.';
       if (!pauseDialog?.open) pauseDialog.showModal();
     } else {
       if (pauseDialog?.open) pauseDialog.close('resume');
@@ -618,20 +622,25 @@
       renderScores(top10);
     } catch {}
 
+    const heading = $('#pauseHeading');
+    const subtext = $('#pauseSubtext');
+    if (heading) heading.textContent = 'Game Over';
+    if (subtext) subtext.textContent = `Final Score: ${state.score.toLocaleString()}`;
     if (!pauseDialog?.open) pauseDialog.showModal();
   }
 
   function renderScores(list) {
-    const ol = $('#scores');
-    if (!ol) return;
-
-    ol.innerHTML = '';
-    list.forEach((item) => {
-      const li = document.createElement('li');
-      li.dataset.initials = item.initials || 'YOU';
-      li.dataset.score = String(item.score);
-      li.textContent = `${li.dataset.initials} — ${item.score.toLocaleString()}`;
-      ol.appendChild(li);
+    // Update both the bottom scoreboard and the in-dialog list
+    const targets = ['#scores', '#pauseScoreList'].map(s => $(s)).filter(Boolean);
+    targets.forEach(ol => {
+      ol.innerHTML = '';
+      list.forEach((item) => {
+        const li = document.createElement('li');
+        li.dataset.initials = item.initials || 'YOU';
+        li.dataset.score = String(item.score);
+        li.textContent = `${li.dataset.initials} — ${item.score.toLocaleString()}`;
+        ol.appendChild(li);
+      });
     });
   }
 

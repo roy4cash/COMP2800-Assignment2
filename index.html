@@ -1,862 +1,518 @@
-(() => {
-  const $ = (sel, ctx = document) => ctx.querySelector(sel);
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Space Game</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Canvas-based Space Game with accessible controls, HUD, and settings." />
+  <meta name="theme-color" content="#0b1023" />
 
-  const canvas = $('#myCanvas');
-  const ctx = canvas.getContext('2d');
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;800&family=Poppins:wght@400;600;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css">
 
-  const btnStart = $('[data-action="start"]');
-  const btnPause = $('[data-action="pause"]');
-  const btnReset = $('[data-action="reset"]');
-  const btnMute = $('[data-action="mute"]');
-  const btnFullscreen = $('[data-action="fullscreen"]');
-  const btnOpenSettings = $('[data-action="open-settings"]');
-
-  const outScore = $('#score');
-  const outLevel = $('#level');
-  const outLives = $('#lives');
-  const outShield = $('#shield');
-  const outFps = $('#fps');
-  const outTime = $('#time');
-
-  const settingsDialog = $('#settingsDialog');
-  const pauseDialog = $('#pauseDialog');
-
-  const sfxShoot = $('#sfxShoot');
-  const sfxExplosion = $('#sfxExplosion');
-  const bgMusic = $('#bgMusic');
-
-  const BASE_WIDTH = 1024;
-  const BASE_HEIGHT = 768;
-  const ASSET_PATH = 'spaceArt/png/';
-
-  const settings = {
-    difficulty: 'normal',
-    graphics: 'high',
-    musicVolume: 0.6,
-    sfxVolume: 0.8,
-    controlScheme: 'wasd',
-    muted: false
-  };
-
-  const difficultyTable = {
-    easy:   { enemyRate: 1.45, enemySpeed: 75,  maxEnemies: 10, enemyFireRate: 2.4 },
-    normal: { enemyRate: 1.05, enemySpeed: 100, maxEnemies: 14, enemyFireRate: 1.8 },
-    hard:   { enemyRate: 0.82, enemySpeed: 135, maxEnemies: 18, enemyFireRate: 1.35 },
-    insane: { enemyRate: 0.62, enemySpeed: 175, maxEnemies: 24, enemyFireRate: 1.0 }
-  };
-
-  const graphicsTable = {
-    low:    { glow: false, particles: 0.55, stars: 20 },
-    medium: { glow: false, particles: 0.8,  stars: 32 },
-    high:   { glow: true,  particles: 1.0,  stars: 45 },
-    ultra:  { glow: true,  particles: 1.2,  stars: 60 }
-  };
-
-  const assets = {
-    background: loadImage('Background.png'),
-    player: loadImage('player.png'),
-    playerLeft: loadImage('playerLeft.png'),
-    playerRight: loadImage('playerRight.png'),
-    playerDamaged: loadImage('playerDamaged.png'),
-    enemyShip: loadImage('enemyShip.png'),
-    enemyUFO: loadImage('enemyUFO.png'),
-    laserGreen: loadImage('laserGreen.png'),
-    laserGreenShot: loadImage('laserGreenShot.png'),
-    laserRed: loadImage('laserRed.png'),
-    laserRedShot: loadImage('laserRedShot.png'),
-    life: loadImage('life.png'),
-    meteorBig: loadImage('meteorBig.png'),
-    meteorSmall: loadImage('meteorSmall.png'),
-    shield: loadImage('shield.png')
-  };
-
-  function loadImage(file) {
-    const img = new Image();
-    img.src = ASSET_PATH + file;
-    return img;
-  }
-
-  function createInitialState() {
-    return {
-      running: false,
-      paused: false,
-      gameOver: false,
-      lastTs: 0,
-      fps: 0,
-      frameCount: 0,
-      frameTimer: 0,
-      score: 0,
-      level: 1,
-      lives: 3,
-      shield: 100,
-      timeSec: 0,
-      enemySpawnTimer: 0,
-      fireCooldown: 0,
-      specialCooldown: 0,
-      screenShake: 0,
-      flashTimer: 0,
-      hitTimer: 0
-    };
-  }
-
-  let state = createInitialState();
-
-  const player = {
-    x: BASE_WIDTH / 2,
-    y: BASE_HEIGHT - 110,
-    speed: 320,
-    vx: 0,
-    vy: 0,
-    r: 24
-  };
-
-  const bullets = [];
-  const enemyBullets = [];
-  const enemies = [];
-  const particles = [];
-  const stars = createStars(70);
-
-  function createStars(count) {
-    return Array.from({ length: count }, () => ({
-      x: Math.random() * BASE_WIDTH,
-      y: Math.random() * BASE_HEIGHT,
-      s: 1 + Math.random() * 2.5,
-      sp: 15 + Math.random() * 55,
-      a: 0.25 + Math.random() * 0.65
-    }));
-  }
-
-  function resizeCanvas() {
-    const dpr = Math.max(1, window.devicePixelRatio || 1);
-    canvas.width = Math.floor(BASE_WIDTH * dpr);
-    canvas.height = Math.floor(BASE_HEIGHT * dpr);
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  }
-
-  resizeCanvas();
-  window.addEventListener('resize', resizeCanvas);
-
-  const keys = new Set();
-
-  window.addEventListener('keydown', (e) => {
-    keys.add(e.key);
-
-    if (e.key === 'p' || e.key === 'P') {
-      e.preventDefault();
-      togglePause();
+  <style>
+    :root {
+      --panel: rgba(10, 15, 35, 0.8);
+      --panel-solid: #0d1330;
+      --primary: #5ac8fa;
+      --text: #edf2ff;
+      --muted: #9aa4bf;
+      --border: #1b2650;
     }
 
-    if (e.key === 'f' || e.key === 'F') {
-      e.preventDefault();
-      toggleFullscreen();
+    * { box-sizing: border-box; }
+    html, body { min-height: 100%; }
+
+    body {
+      margin: 0;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 15% 15%, rgba(90, 200, 250, 0.08), transparent 25%),
+        radial-gradient(circle at 85% 20%, rgba(167, 139, 250, 0.09), transparent 28%),
+        linear-gradient(180deg, #040611 0%, #070b19 45%, #091127 100%);
+      font-family: "Poppins", system-ui, sans-serif;
+      line-height: 1.5;
     }
 
-    if (e.key === ' ' || e.key === 'Spacebar') {
-      e.preventDefault();
-    }
-  }, { passive: false });
-
-  window.addEventListener('keyup', (e) => {
-    keys.delete(e.key);
-  });
-
-  btnStart?.addEventListener('click', startGame);
-  btnPause?.addEventListener('click', togglePause);
-  btnReset?.addEventListener('click', () => {
-    resetGame();
-    render();
-  });
-  btnMute?.addEventListener('click', toggleMute);
-  btnFullscreen?.addEventListener('click', toggleFullscreen);
-  btnOpenSettings?.addEventListener('click', () => settingsDialog?.showModal());
-
-  settingsDialog?.addEventListener('close', () => {
-    if (settingsDialog.returnValue !== 'apply') return;
-
-    settings.difficulty = $('#difficulty')?.value || settings.difficulty;
-    settings.graphics = $('#graphics')?.value || settings.graphics;
-    settings.musicVolume = clamp01(Number($('#musicVolume')?.value || 60) / 100);
-    settings.sfxVolume = clamp01(Number($('#sfxVolume')?.value || 80) / 100);
-    settings.controlScheme = $('#controlScheme')?.value || settings.controlScheme;
-
-    applyVolumes();
-  });
-
-  pauseDialog?.addEventListener('close', () => {
-    const val = pauseDialog.returnValue;
-    if (val === 'resume' && state.running && !state.gameOver) {
-      togglePause(false);
-    } else if (val === 'restart') {
-      resetGame();
-      startGame();
-    }
-  });
-
-  function applyVolumes() {
-    const mv = settings.muted ? 0 : settings.musicVolume;
-    const sv = settings.muted ? 0 : settings.sfxVolume;
-
-    if (bgMusic) bgMusic.volume = clamp01(mv);
-    if (sfxShoot) sfxShoot.volume = clamp01(sv);
-    if (sfxExplosion) sfxExplosion.volume = clamp01(sv);
-  }
-
-  applyVolumes();
-
-  function toggleMute() {
-    settings.muted = !settings.muted;
-    btnMute?.setAttribute('aria-pressed', String(settings.muted));
-    applyVolumes();
-  }
-
-  function startGame() {
-    if (state.running && !state.paused) return;
-    if (state.gameOver) resetGame();
-
-    state.running = true;
-    state.paused = false;
-    state.lastTs = 0;
-
-    bgMusic?.play?.().catch(() => {});
-    requestAnimationFrame(loop);
-  }
-
-  function togglePause(force = null) {
-    if (!state.running || state.gameOver) return;
-
-    const next = force === null ? !state.paused : !!force;
-    state.paused = next;
-
-    if (state.paused) {
-      if (!pauseDialog?.open) pauseDialog.showModal();
-    } else {
-      if (pauseDialog?.open) pauseDialog.close('resume');
-      state.lastTs = 0;
-      requestAnimationFrame(loop);
-    }
-  }
-
-  function resetGame() {
-    state = createInitialState();
-
-    bullets.length = 0;
-    enemyBullets.length = 0;
-    enemies.length = 0;
-    particles.length = 0;
-
-    player.x = BASE_WIDTH / 2;
-    player.y = BASE_HEIGHT - 110;
-    player.vx = 0;
-    player.vy = 0;
-
-    updateHUD();
-  }
-
-  async function toggleFullscreen() {
-    try {
-      const target = $('#play') || canvas;
-      if (!document.fullscreenElement) {
-        await target.requestFullscreen?.();
-      } else {
-        await document.exitFullscreen?.();
-      }
-    } catch {}
-  }
-
-  function loop(ts) {
-    if (!state.running || state.paused || state.gameOver) return;
-
-    if (!state.lastTs) state.lastTs = ts;
-    const dt = Math.min(0.033, (ts - state.lastTs) / 1000);
-    state.lastTs = ts;
-
-    state.frameTimer += dt;
-    state.frameCount++;
-    if (state.frameTimer >= 0.5) {
-      state.fps = Math.round(state.frameCount / state.frameTimer);
-      state.frameTimer = 0;
-      state.frameCount = 0;
+    .skip-link {
+      position: absolute;
+      left: -9999px;
+      top: 0;
     }
 
-    update(dt);
-    render();
-
-    requestAnimationFrame(loop);
-  }
-
-  function update(dt) {
-    state.timeSec += dt;
-    state.flashTimer = Math.max(0, state.flashTimer - dt);
-    state.screenShake = Math.max(0, state.screenShake - dt * 18);
-    state.hitTimer = Math.max(0, state.hitTimer - dt);
-
-    const controls = getControls();
-
-    const mx = (controls.right ? 1 : 0) - (controls.left ? 1 : 0);
-    const my = (controls.down ? 1 : 0) - (controls.up ? 1 : 0);
-
-    const mag = Math.hypot(mx, my) || 1;
-    player.vx = (mx / mag) * player.speed;
-    player.vy = (my / mag) * player.speed;
-
-    player.x += player.vx * dt;
-    player.y += player.vy * dt;
-
-    player.x = clamp(player.x, 40, BASE_WIDTH - 40);
-    player.y = clamp(player.y, 60, BASE_HEIGHT - 60);
-
-    state.fireCooldown -= dt;
-    if (controls.fire && state.fireCooldown <= 0) {
-      firePlayerBullet();
-      state.fireCooldown = 0.16;
+    .skip-link:focus {
+      left: 1rem;
+      top: 1rem;
+      z-index: 100;
+      background: #fff;
+      color: #000;
+      padding: 0.5rem 0.75rem;
+      border-radius: 8px;
     }
 
-    state.specialCooldown -= dt;
-    if (controls.special && state.specialCooldown <= 0 && state.shield >= 25) {
-      activateSmartBomb();
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 30;
+      border-bottom: 1px solid var(--border);
+      background: rgba(5, 8, 22, 0.82);
+      backdrop-filter: blur(10px);
     }
 
-    const diff = difficultyTable[settings.difficulty] || difficultyTable.normal;
-    const levelFactor = 1 + (state.level - 1) * 0.09;
-    const spawnRate = Math.max(0.24, diff.enemyRate / Math.min(levelFactor, 2.5));
-    const enemySpeed = diff.enemySpeed * Math.min(levelFactor, 2.2);
-    const maxEnemies = Math.round(diff.maxEnemies + (state.level - 1) * 1.4);
-    const enemyFireRate = Math.max(0.45, diff.enemyFireRate / Math.min(levelFactor, 2.3));
-
-    state.enemySpawnTimer -= dt;
-    if (state.enemySpawnTimer <= 0 && enemies.length < maxEnemies) {
-      spawnEnemy(enemySpeed, enemyFireRate);
-      state.enemySpawnTimer = spawnRate;
+    .header-inner {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 1rem;
     }
 
-    for (const s of stars) {
-      s.y += s.sp * dt;
-      if (s.y > BASE_HEIGHT + 8) {
-        s.y = -8;
-        s.x = Math.random() * BASE_WIDTH;
+    header h1 {
+      margin: 0 0 0.8rem;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-family: "Orbitron", sans-serif;
+      font-weight: 800;
+      letter-spacing: 1px;
+    }
+
+    nav[aria-label="Primary"] {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.65rem;
+    }
+
+    nav button {
+      border: 1px solid var(--border);
+      background: linear-gradient(180deg, #121938 0%, #0b1130 100%);
+      color: var(--text);
+      border-radius: 12px;
+      padding: 0.7rem 1rem;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.55rem;
+      cursor: pointer;
+    }
+
+    nav [data-action="start"] {
+      background: linear-gradient(180deg, #113852 0%, #0e2640 100%);
+    }
+
+    nav [data-action="reset"] {
+      background: linear-gradient(180deg, #471617 0%, #2d0b0c 100%);
+    }
+
+    main {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 1rem;
+    }
+
+    .game-shell {
+      display: grid;
+      grid-template-columns: 1fr 320px;
+      gap: 1rem;
+      align-items: start;
+    }
+
+    #hud {
+      position: sticky;
+      top: 108px;
+      z-index: 15;
+      margin-bottom: 1rem;
+    }
+
+    #hud [role="status"] {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(100px, 1fr));
+      gap: 0.75rem;
+      padding: 0.85rem;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      backdrop-filter: blur(10px);
+    }
+
+    .hud-item {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.04);
+      border-radius: 12px;
+      padding: 0.7rem 0.75rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+    }
+
+    .hud-label {
+      font-size: 0.82rem;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+    }
+
+    .hud-item output {
+      font-family: "Orbitron", sans-serif;
+      color: var(--primary);
+      font-size: 1.05rem;
+      letter-spacing: 0.4px;
+    }
+
+    #play figure {
+      position: relative;
+      margin: 0;
+      overflow: hidden;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      background: #050917;
+    }
+
+    #play figcaption {
+      position: absolute;
+      top: 1rem;
+      left: 1rem;
+      z-index: 10;
+      margin: 0;
+      padding: 0.45rem 0.7rem;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(7, 13, 28, 0.74);
+      color: var(--muted);
+      font-size: 0.8rem;
+    }
+
+    #myCanvas {
+      display: block;
+      width: 100%;
+      height: auto;
+      background: #000;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 1rem;
+      backdrop-filter: blur(10px);
+    }
+
+    .panel + .panel { margin-top: 1rem; }
+
+    .panel h2 {
+      margin: 0 0 0.85rem;
+      font-family: "Orbitron", sans-serif;
+      font-size: 1.05rem;
+    }
+
+    #help ul, #scores {
+      margin: 0;
+      padding-left: 1.1rem;
+    }
+
+    #help li, #scores li {
+      margin: 0.45rem 0;
+    }
+
+    dialog {
+      width: min(560px, calc(100% - 2rem));
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      background: linear-gradient(180deg, #101733 0%, #0a1025 100%);
+      color: var(--text);
+      padding: 1.2rem;
+    }
+
+    dialog::backdrop {
+      background: rgba(2, 4, 12, 0.68);
+      backdrop-filter: blur(4px);
+    }
+
+    dialog h2 {
+      margin: 0 0 0.85rem;
+      font-family: "Orbitron", sans-serif;
+    }
+
+    dialog section {
+      display: grid;
+      gap: 0.8rem;
+      margin-bottom: 0.75rem;
+    }
+
+    dialog label {
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    dialog input[type="range"],
+    dialog select {
+      width: 100%;
+      margin-top: 0.35rem;
+      padding: 0.7rem 0.8rem;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: #0d1531;
+      color: var(--text);
+    }
+
+    dialog menu {
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.65rem;
+      padding: 0;
+      margin: 1rem 0 0;
+    }
+
+    dialog button {
+      border: 1px solid var(--border);
+      background: linear-gradient(180deg, #121938 0%, #0b1130 100%);
+      color: var(--text);
+      border-radius: 12px;
+      padding: 0.7rem 1rem;
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    footer {
+      max-width: 1280px;
+      margin: 1rem auto 2rem;
+      padding: 0 1rem;
+      text-align: center;
+      color: var(--muted);
+    }
+
+    :focus-visible {
+      outline: 2px solid var(--primary);
+      outline-offset: 3px;
+    }
+
+    #play:fullscreen,
+    #myCanvas:fullscreen {
+      background: #000;
+    }
+
+    #play:fullscreen figure,
+    #myCanvas:fullscreen {
+      border-radius: 0;
+      border: 0;
+    }
+
+    #play:fullscreen #myCanvas,
+    #myCanvas:fullscreen {
+      width: 100vw;
+      height: 100vh;
+    }
+
+    @media (max-width: 1080px) {
+      .game-shell { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 760px) {
+      #hud { top: 100px; }
+      #hud [role="status"] {
+        grid-template-columns: repeat(2, minmax(120px, 1fr));
       }
     }
 
-    for (let i = bullets.length - 1; i >= 0; i--) {
-      const b = bullets[i];
-      b.y -= b.speed * dt;
-      b.life -= dt;
-      if (b.life <= 0 || b.y < -40) bullets.splice(i, 1);
-    }
-
-    for (let i = enemyBullets.length - 1; i >= 0; i--) {
-      const b = enemyBullets[i];
-      b.y += b.speed * dt;
-      b.life -= dt;
-
-      if (dist2(b.x, b.y, player.x, player.y) < (b.r + player.r) * (b.r + player.r)) {
-        enemyBullets.splice(i, 1);
-        damagePlayer(18);
-        continue;
-      }
-
-      if (b.life <= 0 || b.y > BASE_HEIGHT + 40) enemyBullets.splice(i, 1);
-    }
-
-    for (let i = enemies.length - 1; i >= 0; i--) {
-      const e = enemies[i];
-
-      e.y += e.speed * dt;
-      e.x += Math.sin(state.timeSec * e.wobbleSpeed + e.phase) * e.wobbleAmount * dt;
-      e.fireTimer -= dt;
-
-      if (e.canShoot && e.fireTimer <= 0) {
-        fireEnemyBullet(e);
-        e.fireTimer = e.baseFireRate + Math.random() * 0.8;
-      }
-
-      let hit = false;
-      for (let j = bullets.length - 1; j >= 0; j--) {
-        const b = bullets[j];
-        if (dist2(e.x, e.y, b.x, b.y) < (e.r + b.r) * (e.r + b.r)) {
-          bullets.splice(j, 1);
-          e.hp -= 1;
-          spawnHitSpark(b.x, b.y);
-          hit = true;
-
-          if (e.hp <= 0) {
-            destroyEnemy(i, e);
-          }
-          break;
-        }
-      }
-      if (hit) continue;
-
-      if (dist2(e.x, e.y, player.x, player.y) < (e.r + player.r) * (e.r + player.r)) {
-        enemies.splice(i, 1);
-        damagePlayer(e.damage);
-        continue;
-      }
-
-      if (e.y > BASE_HEIGHT + 80) {
-        enemies.splice(i, 1);
+    @media (max-width: 520px) {
+      nav button {
+        flex: 1 1 calc(50% - 0.65rem);
+        justify-content: center;
       }
     }
-
-    for (let i = particles.length - 1; i >= 0; i--) {
-      const p = particles[i];
-      p.x += p.vx * dt;
-      p.y += p.vy * dt;
-      p.life -= dt;
-      if (p.life <= 0) particles.splice(i, 1);
-    }
-
-    state.level = 1 + Math.floor(state.timeSec / 22);
-
-    updateHUD();
-  }
-
-  function getControls() {
-    const arrowsOnly = settings.controlScheme === 'arrows';
-    return {
-      up: arrowsOnly ? keys.has('ArrowUp') : (keys.has('w') || keys.has('W') || keys.has('ArrowUp')),
-      down: arrowsOnly ? keys.has('ArrowDown') : (keys.has('s') || keys.has('S') || keys.has('ArrowDown')),
-      left: arrowsOnly ? keys.has('ArrowLeft') : (keys.has('a') || keys.has('A') || keys.has('ArrowLeft')),
-      right: arrowsOnly ? keys.has('ArrowRight') : (keys.has('d') || keys.has('D') || keys.has('ArrowRight')),
-      fire: keys.has(' ') || keys.has('Spacebar'),
-      special: keys.has('Shift')
-    };
-  }
-
-  function spawnEnemy(baseSpeed, fireRate) {
-    const roll = Math.random();
-
-    let type = 'ship';
-    let sprite = assets.enemyShip;
-    let size = 56;
-    let hp = 1;
-    let damage = 22;
-    let canShoot = true;
-    let scoreValue = 40;
-
-    if (roll < 0.22) {
-      type = 'ufo';
-      sprite = assets.enemyUFO;
-      size = 60;
-      hp = 2;
-      damage = 28;
-      canShoot = true;
-      scoreValue = 75;
-    } else if (roll < 0.44) {
-      type = 'meteorBig';
-      sprite = assets.meteorBig;
-      size = 72;
-      hp = 3;
-      damage = 35;
-      canShoot = false;
-      scoreValue = 90;
-    } else if (roll < 0.62) {
-      type = 'meteorSmall';
-      sprite = assets.meteorSmall;
-      size = 42;
-      hp = 1;
-      damage = 18;
-      canShoot = false;
-      scoreValue = 35;
-    }
-
-    enemies.push({
-      type,
-      sprite,
-      x: 60 + Math.random() * (BASE_WIDTH - 120),
-      y: -60,
-      r: size * 0.32,
-      size,
-      speed: baseSpeed * (0.82 + Math.random() * 0.36),
-      hp,
-      damage,
-      canShoot,
-      scoreValue,
-      fireTimer: 0.8 + Math.random() * 1.3,
-      baseFireRate: fireRate,
-      wobbleAmount: 20 + Math.random() * 30,
-      wobbleSpeed: 1.1 + Math.random() * 1.6,
-      phase: Math.random() * Math.PI * 2
-    });
-  }
-
-  function firePlayerBullet() {
-    bullets.push({
-      x: player.x,
-      y: player.y - 30,
-      speed: 540,
-      life: 1.4,
-      r: 8,
-      kind: Math.random() > 0.5 ? 'beam' : 'shot'
-    });
-
-    spawnMuzzleFlash();
-    sfxShoot?.cloneNode(true)?.play?.().catch(() => {});
-  }
-
-  function fireEnemyBullet(enemy) {
-    enemyBullets.push({
-      x: enemy.x,
-      y: enemy.y + enemy.size * 0.2,
-      speed: 270 + Math.random() * 45,
-      life: 3.2,
-      r: 8,
-      kind: Math.random() > 0.5 ? 'beam' : 'shot'
-    });
-  }
-
-  function activateSmartBomb() {
-    state.specialCooldown = 6;
-    state.shield = Math.max(0, state.shield - 25);
-    state.screenShake = 10;
-    state.flashTimer = 0.45;
-
-    let bonus = 0;
-    for (let i = enemies.length - 1; i >= 0; i--) {
-      bonus += enemies[i].scoreValue;
-      explode(enemies[i].x, enemies[i].y, enemies[i].type === 'meteorBig' ? 18 : 12, 'special');
-      enemies.splice(i, 1);
-    }
-
-    state.score += bonus;
-    explode(player.x, player.y, 28, 'special');
-    sfxExplosion?.cloneNode(true)?.play?.().catch(() => {});
-  }
-
-  function destroyEnemy(index, enemy) {
-    state.score += enemy.scoreValue;
-    state.screenShake = enemy.type === 'meteorBig' ? 8 : 4;
-    explode(enemy.x, enemy.y, enemy.type === 'meteorBig' ? 20 : 12, 'enemy');
-    sfxExplosion?.cloneNode(true)?.play?.().catch(() => {});
-    enemies.splice(index, 1);
-  }
-
-  function damagePlayer(amount) {
-    state.shield -= amount;
-    state.screenShake = 8;
-    state.flashTimer = 0.2;
-    state.hitTimer = 0.35;
-
-    explode(player.x, player.y, 16, 'player');
-    sfxExplosion?.cloneNode(true)?.play?.().catch(() => {});
-
-    if (state.shield <= 0) {
-      state.lives -= 1;
-      state.shield = 100;
-
-      if (state.lives <= 0) {
-        endGame();
-      }
-    }
-  }
-
-  function explode(x, y, count, type) {
-    const scale = graphicsTable[settings.graphics]?.particles ?? 1;
-    const finalCount = Math.round(count * scale);
-
-    for (let i = 0; i < finalCount; i++) {
-      const a = Math.random() * Math.PI * 2;
-      const speed = 50 + Math.random() * 210;
-
-      particles.push({
-        x,
-        y,
-        vx: Math.cos(a) * speed,
-        vy: Math.sin(a) * speed,
-        s: 2 + Math.random() * 4,
-        life: 0.35 + Math.random() * 0.8,
-        maxLife: 1.1,
-        front: Math.random() > 0.5,
-        color:
-          type === 'player' ? '#ff6b6b' :
-          type === 'special' ? '#67e8f9' :
-          '#f8fafc'
-      });
-    }
-  }
-
-  function spawnHitSpark(x, y) {
-    for (let i = 0; i < 6; i++) {
-      const a = Math.random() * Math.PI * 2;
-      const speed = 50 + Math.random() * 120;
-      particles.push({
-        x,
-        y,
-        vx: Math.cos(a) * speed,
-        vy: Math.sin(a) * speed,
-        s: 2 + Math.random() * 2,
-        life: 0.1 + Math.random() * 0.22,
-        maxLife: 0.32,
-        front: true,
-        color: '#ffffff'
-      });
-    }
-  }
-
-  function spawnMuzzleFlash() {
-    for (let i = 0; i < 4; i++) {
-      const spread = (Math.random() - 0.5) * 20;
-      particles.push({
-        x: player.x + spread * 0.2,
-        y: player.y - 25,
-        vx: spread,
-        vy: -(40 + Math.random() * 70),
-        s: 2 + Math.random() * 2,
-        life: 0.08 + Math.random() * 0.12,
-        maxLife: 0.2,
-        front: true,
-        color: '#a7f3d0'
-      });
-    }
-  }
-
-  function endGame() {
-    state.running = false;
-    state.gameOver = true;
-
-    try {
-      const key = 'spaceGameScores';
-      const list = JSON.parse(localStorage.getItem(key) || '[]');
-      list.push({ initials: 'YOU', score: state.score, t: Date.now() });
-      list.sort((a, b) => b.score - a.score);
-      const top10 = list.slice(0, 10);
-      localStorage.setItem(key, JSON.stringify(top10));
-      renderScores(top10);
-    } catch {}
-
-    if (!pauseDialog?.open) pauseDialog.showModal();
-  }
-
-  function renderScores(list) {
-    const ol = $('#scores');
-    if (!ol) return;
-
-    ol.innerHTML = '';
-    list.forEach((item) => {
-      const li = document.createElement('li');
-      li.dataset.initials = item.initials || 'YOU';
-      li.dataset.score = String(item.score);
-      li.textContent = `${li.dataset.initials} — ${item.score.toLocaleString()}`;
-      ol.appendChild(li);
-    });
-  }
-
-  function updateHUD() {
-    outScore.textContent = String(state.score);
-    outLevel.textContent = String(state.level);
-    outLives.textContent = String(state.lives);
-    outShield.textContent = `${Math.round(clamp(state.shield, 0, 100))}%`;
-    outFps.textContent = String(state.fps);
-    outTime.textContent = toMMSS(state.timeSec);
-  }
-
-  function render() {
-    ctx.clearRect(0, 0, BASE_WIDTH, BASE_HEIGHT);
-
-    const shakeX = state.screenShake > 0 ? (Math.random() - 0.5) * state.screenShake * 4 : 0;
-    const shakeY = state.screenShake > 0 ? (Math.random() - 0.5) * state.screenShake * 4 : 0;
-
-    ctx.save();
-    ctx.translate(shakeX, shakeY);
-
-    drawBackground();
-    drawStars();
-    drawParticles(false);
-    drawEnemies();
-    drawBullets();
-    drawEnemyBullets();
-    drawPlayer();
-    drawParticles(true);
-    drawCanvasHUD();
-    drawOverlay();
-
-    ctx.restore();
-  }
-
-  function drawBackground() {
-    if (assets.background.complete && assets.background.naturalWidth) {
-      ctx.drawImage(assets.background, 0, 0, BASE_WIDTH, BASE_HEIGHT);
-    } else {
-      ctx.fillStyle = '#5b3d6d';
-      ctx.fillRect(0, 0, BASE_WIDTH, BASE_HEIGHT);
-    }
-  }
-
-  function drawStars() {
-    const visibleStars = graphicsTable[settings.graphics]?.stars ?? 40;
-    for (let i = 0; i < Math.min(visibleStars, stars.length); i++) {
-      const s = stars[i];
-      ctx.save();
-      ctx.globalAlpha = s.a;
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(s.x, s.y, s.s, s.s);
-      ctx.restore();
-    }
-  }
-
-  function drawPlayer() {
-    let sprite = assets.player;
-    if (state.hitTimer > 0 || state.shield <= 25) sprite = assets.playerDamaged;
-    else if (player.vx < -20) sprite = assets.playerLeft;
-    else if (player.vx > 20) sprite = assets.playerRight;
-
-    const w = 78;
-    const h = 78;
-
-    ctx.save();
-    if (graphicsTable[settings.graphics]?.glow) {
-      ctx.shadowColor = '#5ac8fa';
-      ctx.shadowBlur = 18;
-    }
-    ctx.drawImage(sprite, player.x - w / 2, player.y - h / 2, w, h);
-
-    const thrust = 8 + Math.sin(state.timeSec * 20) * 3;
-    ctx.fillStyle = 'rgba(255,160,60,0.8)';
-    ctx.beginPath();
-    ctx.moveTo(player.x - 7, player.y + 24);
-    ctx.lineTo(player.x, player.y + 24 + thrust);
-    ctx.lineTo(player.x + 7, player.y + 24);
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
-  }
-
-  function drawEnemies() {
-    for (const e of enemies) {
-      ctx.save();
-      if (graphicsTable[settings.graphics]?.glow) {
-        ctx.shadowColor = e.type === 'ufo' ? '#fbbf24' : '#ff6b6b';
-        ctx.shadowBlur = e.type === 'meteorBig' ? 12 : 8;
-      }
-      ctx.drawImage(e.sprite, e.x - e.size / 2, e.y - e.size / 2, e.size, e.size);
-      ctx.restore();
-    }
-  }
-
-  function drawBullets() {
-    for (const b of bullets) {
-      const img = b.kind === 'shot' ? assets.laserGreenShot : assets.laserGreen;
-      ctx.drawImage(img, b.x - 6, b.y - 18, 12, 34);
-    }
-  }
-
-  function drawEnemyBullets() {
-    for (const b of enemyBullets) {
-      const img = b.kind === 'shot' ? assets.laserRedShot : assets.laserRed;
-      ctx.drawImage(img, b.x - 6, b.y - 8, 12, 28);
-    }
-  }
-
-  function drawParticles(front) {
-    for (const p of particles) {
-      if (!!p.front !== !!front) continue;
-      ctx.save();
-      ctx.globalAlpha = Math.max(0, p.life / p.maxLife);
-      ctx.fillStyle = p.color;
-      ctx.fillRect(p.x, p.y, p.s, p.s);
-      ctx.restore();
-    }
-  }
-
-  function drawCanvasHUD() {
-    ctx.save();
-
-    for (let i = 0; i < state.lives; i++) {
-      ctx.drawImage(assets.life, 18 + i * 32, 18, 22, 22);
-    }
-
-    ctx.drawImage(assets.shield, BASE_WIDTH - 150, 16, 26, 26);
-
-    ctx.fillStyle = 'rgba(10,15,35,0.7)';
-    ctx.fillRect(BASE_WIDTH - 118, 20, 90, 16);
-
-    ctx.fillStyle = state.shield > 35 ? '#5ac8fa' : '#ff6b6b';
-    ctx.fillRect(BASE_WIDTH - 118, 20, 90 * clamp(state.shield / 100, 0, 1), 16);
-
-    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
-    ctx.strokeRect(BASE_WIDTH - 118, 20, 90, 16);
-
-    ctx.restore();
-  }
-
-  function drawOverlay() {
-    if (!state.running && !state.gameOver) {
-      ctx.save();
-      ctx.fillStyle = 'rgba(0,0,0,0.34)';
-      ctx.fillRect(0, 0, BASE_WIDTH, BASE_HEIGHT);
-
-      ctx.fillStyle = '#ffffff';
-      ctx.textAlign = 'center';
-      ctx.font = '800 48px Orbitron, sans-serif';
-      ctx.fillText('SPACE GAME', BASE_WIDTH / 2, BASE_HEIGHT / 2 - 30);
-
-      ctx.fillStyle = '#dbeafe';
-      ctx.font = '600 22px Poppins, sans-serif';
-      ctx.fillText('Press Start to Begin', BASE_WIDTH / 2, BASE_HEIGHT / 2 + 18);
-      ctx.restore();
-    }
-
-    if (state.gameOver) {
-      ctx.save();
-      ctx.fillStyle = 'rgba(0,0,0,0.45)';
-      ctx.fillRect(0, 0, BASE_WIDTH, BASE_HEIGHT);
-
-      ctx.fillStyle = '#ffffff';
-      ctx.textAlign = 'center';
-      ctx.font = '800 44px Orbitron, sans-serif';
-      ctx.fillText('GAME OVER', BASE_WIDTH / 2, BASE_HEIGHT / 2 - 20);
-
-      ctx.fillStyle = '#fca5a5';
-      ctx.font = '600 22px Poppins, sans-serif';
-      ctx.fillText(`Final Score: ${state.score}`, BASE_WIDTH / 2, BASE_HEIGHT / 2 + 24);
-      ctx.restore();
-    }
-
-    if (state.flashTimer > 0) {
-      ctx.save();
-      ctx.globalAlpha = state.flashTimer * 0.25;
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, BASE_WIDTH, BASE_HEIGHT);
-      ctx.restore();
-    }
-  }
-
-  function clamp(v, a, b) {
-    return Math.max(a, Math.min(b, v));
-  }
-
-  function clamp01(v) {
-    return clamp(v, 0, 1);
-  }
-
-  function dist2(x1, y1, x2, y2) {
-    const dx = x1 - x2;
-    const dy = y1 - y2;
-    return dx * dx + dy * dy;
-  }
-
-  function toMMSS(sec) {
-    const s = Math.floor(sec);
-    const m = Math.floor(s / 60);
-    const r = s % 60;
-    return `${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}`;
-  }
-
-  try {
-    const key = 'spaceGameScores';
-    const list = JSON.parse(localStorage.getItem(key) || '[]');
-    renderScores(list.slice(0, 10));
-  } catch {}
-
-  updateHUD();
-  render();
-
-  window.SpaceGame = {
-    start: startGame,
-    pause: () => togglePause(true),
-    resume: () => togglePause(false),
-    reset: resetGame,
-    fullscreen: toggleFullscreen,
-    mute: toggleMute
-  };
-})();
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#play">Skip to Game</a>
+
+  <header>
+    <div class="header-inner">
+      <h1 aria-label="Space Game">
+        <i class="fa-solid fa-rocket" aria-hidden="true"></i>
+        Space Game
+      </h1>
+
+      <nav aria-label="Primary">
+        <button type="button" data-action="start" aria-label="Start">
+          <i class="fa-solid fa-play" aria-hidden="true"></i> Start
+        </button>
+        <button type="button" data-action="pause" aria-label="Pause">
+          <i class="fa-solid fa-circle-pause" aria-hidden="true"></i> Pause
+        </button>
+        <button type="button" data-action="reset" aria-label="Reset">
+          <i class="fa-solid fa-rotate-right" aria-hidden="true"></i> Reset
+        </button>
+        <button type="button" data-action="mute" aria-pressed="false" aria-label="Mute">
+          <i class="fa-solid fa-volume-xmark" aria-hidden="true"></i> Mute
+        </button>
+        <button type="button" data-action="fullscreen" aria-label="Toggle fullscreen">
+          <i class="fa-solid fa-expand" aria-hidden="true"></i> Fullscreen
+        </button>
+        <button type="button" data-action="open-settings" aria-controls="settingsDialog" aria-haspopup="dialog">
+          <i class="fa-solid fa-gear" aria-hidden="true"></i> Settings
+        </button>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main" tabindex="-1">
+    <div class="game-shell">
+      <div class="game-column">
+        <section id="hud" aria-label="Game HUD">
+          <div role="status" aria-live="polite">
+            <div class="hud-item">
+              <span class="hud-label"><i class="fa-solid fa-trophy"></i> Score</span>
+              <output id="score">0</output>
+            </div>
+            <div class="hud-item">
+              <span class="hud-label"><i class="fa-solid fa-layer-group"></i> Level</span>
+              <output id="level">1</output>
+            </div>
+            <div class="hud-item">
+              <span class="hud-label"><i class="fa-solid fa-heart"></i> Lives</span>
+              <output id="lives">3</output>
+            </div>
+            <div class="hud-item">
+              <span class="hud-label"><i class="fa-solid fa-shield-halved"></i> Shield</span>
+              <output id="shield">100%</output>
+            </div>
+            <div class="hud-item">
+              <span class="hud-label"><i class="fa-solid fa-gauge"></i> FPS</span>
+              <output id="fps">0</output>
+            </div>
+            <div class="hud-item">
+              <span class="hud-label"><i class="fa-regular fa-clock"></i> Time</span>
+              <output id="time">00:00</output>
+            </div>
+          </div>
+        </section>
+
+        <section id="play" aria-label="Game Canvas">
+          <figure>
+            <figcaption>Press Start to launch</figcaption>
+            <canvas id="myCanvas" width="1024" height="768">
+              Your browser does not support the HTML5 canvas tag.
+            </canvas>
+          </figure>
+        </section>
+      </div>
+
+      <aside class="sidebar-column">
+        <section id="help" class="panel" aria-label="Controls Guide">
+          <h2><i class="fa-solid fa-gamepad" aria-hidden="true"></i> Controls</h2>
+          <ul>
+            <li>Move: Arrow keys or WASD</li>
+            <li>Fire: Space</li>
+            <li>Special: Shift</li>
+            <li>Pause: P</li>
+            <li>Toggle Fullscreen: F</li>
+          </ul>
+        </section>
+
+        <section id="leaderboard" class="panel" aria-label="Leaderboard">
+          <h2><i class="fa-solid fa-ranking-star" aria-hidden="true"></i> Leaderboard</h2>
+          <ol id="scores">
+            <li data-initials="AAA" data-score="10000">AAA — 10,000</li>
+            <li data-initials="BBB" data-score="8000">BBB — 8,000</li>
+            <li data-initials="CCC" data-score="5000">CCC — 5,000</li>
+          </ol>
+        </section>
+      </aside>
+    </div>
+
+    <section id="assets" hidden aria-hidden="true">
+      <audio id="sfxShoot" preload="auto">
+        <source src="assets/audio/shoot.mp3" type="audio/mpeg">
+      </audio>
+      <audio id="sfxExplosion" preload="auto">
+        <source src="assets/audio/explosion.mp3" type="audio/mpeg">
+      </audio>
+      <audio id="bgMusic" preload="auto" loop>
+        <source src="assets/audio/music.mp3" type="audio/mpeg">
+      </audio>
+    </section>
+
+    <dialog id="settingsDialog" aria-labelledby="settingsTitle">
+      <form method="dialog">
+        <header>
+          <h2 id="settingsTitle">
+            <i class="fa-solid fa-sliders" aria-hidden="true"></i>
+            Settings
+          </h2>
+        </header>
+
+        <section>
+          <label for="difficulty">Difficulty
+            <select id="difficulty" name="difficulty">
+              <option value="easy">Easy</option>
+              <option value="normal" selected>Normal</option>
+              <option value="hard">Hard</option>
+              <option value="insane">Insane</option>
+            </select>
+          </label>
+
+          <label for="graphics">Graphics
+            <select id="graphics" name="graphics">
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high" selected>High</option>
+              <option value="ultra">Ultra</option>
+            </select>
+          </label>
+
+          <label for="musicVolume">Music Volume
+            <input id="musicVolume" name="musicVolume" type="range" min="0" max="100" value="60" />
+          </label>
+
+          <label for="sfxVolume">SFX Volume
+            <input id="sfxVolume" name="sfxVolume" type="range" min="0" max="100" value="80" />
+          </label>
+
+          <label for="controlScheme">Control Scheme
+            <select id="controlScheme" name="controlScheme">
+              <option value="wasd" selected>WASD + Space</option>
+              <option value="arrows">Arrows + Space</option>
+            </select>
+          </label>
+        </section>
+
+        <menu>
+          <button value="cancel" aria-label="Close settings">
+            <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+            Close
+          </button>
+          <button value="apply" data-action="apply-settings" aria-label="Apply settings">
+            <i class="fa-solid fa-check" aria-hidden="true"></i>
+            Apply
+          </button>
+        </menu>
+      </form>
+    </dialog>
+
+    <dialog id="pauseDialog" aria-labelledby="pauseTitle">
+      <form method="dialog">
+        <h2 id="pauseTitle"><i class="fa-solid fa-circle-pause" aria-hidden="true"></i> Paused</h2>
+        <p>Game is paused.</p>
+        <menu>
+          <button value="resume" data-action="resume">
+            <i class="fa-solid fa-play" aria-hidden="true"></i>
+            Resume
+          </button>
+          <button value="restart" data-action="reset">
+            <i class="fa-solid fa-rotate-right" aria-hidden="true"></i>
+            Restart
+          </button>
+        </menu>
+      </form>
+    </dialog>
+  </main>
+
+  <footer>
+    <small>COMP 2800 &ndash; Assignment 2 &nbsp;&bull;&nbsp; Space Game in JavaScript</small>
+  </footer>
+
+  <noscript>JavaScript is required to play this game.</noscript>
+  <script defer src="app.js"></script>
+</body>
+</html>
